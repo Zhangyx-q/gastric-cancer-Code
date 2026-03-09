@@ -409,15 +409,3 @@ dev.off()
 
 
 
-library(maftools)
-#TCGA-LAML 的MAF 文件(gz)
-laml.maf = system.file('extdata', 'tcga_laml.maf.gz', package = 'maftools')
-#临床信息(optional)
-laml.clin = system.file('extdata', 'tcga_laml_annot.tsv', package = 'maftools')
-
-laml = read.maf(maf = laml.maf, clinicalData = laml.clin)
-
-getSampleSummary(laml)
-
-oncoplot(maf = laml, top = 20)
-
