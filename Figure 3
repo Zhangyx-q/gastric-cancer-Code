@@ -1,0 +1,423 @@
+library(Seurat)
+library(ggplot2)
+library(ComplexHeatmap)
+library(circlize)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+
+rm(list = ls())
+
+Mcolors = c("#F5AB5E","#AFC778","#947959","#EFDBB9","#5F97C6","#A3CDEA")
+
+Myeloid <- readRDS("E:/胃癌/20250619/data/Myeloid.rds")
+
+pdf("./Fig3A.pdf",6.3,3.7)
+DimPlot(Myeloid,cols = Mcolors,label = T)
+dev.off()
+
+mapz <- Myeloid@meta.data %>%
+  group_by(cluster, Site) %>%
+  summarise(n = n(), .groups = "drop")
+
+wide_df <- dcast(mapz, cluster ~ Site)
+wide_df[is.na(wide_df)] <- 0
+
+rownames(wide_df) <- wide_df[,1]
+wide_df <- wide_df[,-1]
+
+row_totals <- rowSums(wide_df)
+col_totals <- colSums(wide_df)
+grand_total <- sum(wide_df)
+
+expected <- outer(row_totals, col_totals) / grand_total
+roe <- round(as.matrix(wide_df) / expected, 2)
+roe <- roe[,c(1,2,3,5,4)]
+roe[roe > 3.5] <- 3.5
+
+symbol_matrix <- matrix("", nrow = nrow(roe), ncol = ncol(roe))
+symbol_matrix[roe > 3] <- "+++"
+symbol_matrix[roe > 2 & roe <= 3] <- "++"
+symbol_matrix[roe > 1 & roe <= 2] <- "+"
+
+rownames(symbol_matrix) <- rownames(roe)
+colnames(symbol_matrix) <- colnames(roe)
+
+pdf("./Fig3B.pdf", 3.5, 2.5)
+pheatmap(
+  roe,
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  display_numbers = symbol_matrix,
+  color = colorRampPalette(
+    c("#f7f7f7","#fad9c7","#e68661","#a91e2b")
+  )(100)
+)
+dev.off()
+
+
+mapz <- Myeloid@meta.data %>%
+  dplyr::group_by(cluster, Site) %>%
+  dplyr::summarise(n = dplyr::n())
+
+
+mapz$Site <- factor(mapz$Site, levels = c("LN", "MLN", "MMLN", "PT", "MT"))
+p1=ggplot(data = mapz, mapping = aes(x = cluster, y = n, fill = Site))  + 
+  geom_bar(stat = 'identity', position = 'fill', color = "grey", size = 0.2)+
+  scale_fill_manual(values =c("#007891","#129981","#3A5182","#EA977C","#DA4B35"))+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1,vjust = 0.5))
+p2=ggplot(data = mapz, mapping = aes(x = Site, y = n, fill = cluster))  + 
+  geom_bar(stat = 'identity', position = 'fill', color = "grey", size = 0.2)+
+  scale_fill_manual(values =Mcolors)+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90,hjust = 1,vjust = 0.5))
+
+pdf("./Fig3B.pdf",7,4)
+p1|p2
+dev.off()
+
+##Figure3C###
+
+marker=read.table("E:\\数据库\\Myeloid\\33545035.txt",sep = "\t",header = T)
+marker=apply(marker,2,function(x){setdiff(as.character(x),"")})
+
+# cells_rankings <- AUCell_buildRankings(Myeloid@assays$RNA@data,splitByBlocks=TRUE)
+# cells_AUC <- AUCell_calcAUC(marker, cells_rankings, aucMaxRank=5, nCores=1)
+# cells_AUC
+# aa=as.data.frame(t(getAUC(cells_AUC)))
+# 
+# Myeloid@meta.data=cbind(Myeloid@meta.data,aa)
+
+Myeloid=AddModuleScore(Myeloid,marker,name = names(marker))
+colnames(Myeloid@meta.data)
+
+#Mcolors = c("#F5AB5E","#AFC778","#947959","#EFDBB9","#5F97C6","#A3CDEA")
+
+
+Myeloid@meta.data$cluster=factor(Myeloid@meta.data$cluster,
+                                 levels = unique(Myeloid@meta.data$cluster)[order(unique(Myeloid@meta.data$cluster))])
+
+library(dplyr)
+library(ggplot2)
+
+
+
+
+library(ggpubr)
+
+df <- Myeloid@meta.data %>%
+  dplyr::select(orig.ident, cluster, M11)
+df_median <- df %>%
+  group_by(orig.ident, cluster) %>%
+  summarize(median_score = median(M11, na.rm = TRUE)) %>%
+  ungroup()
+
+
+p1 <- ggboxplot(df_median, x="cluster", y="median_score", width = 0.4, 
+                color = "black",#轮廓颜色
+                palette = Mcolors,
+                fill="cluster",#填充
+                xlab = F, #不显示x轴的标签
+                ylab = F,
+                bxp.errorbar=T,#显示误差条
+                bxp.errorbar.width=0.5, #误差条大小
+                size=0.1, #箱型图边线的粗细
+                outlier.shape=NA, #不显示outlier
+                title = "M1",
+                legend = "none")+ #图例放右边 + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+df <- Myeloid@meta.data %>%
+  dplyr::select(orig.ident, cluster, M22)
+df_median <- df %>%
+  group_by(orig.ident, cluster) %>%
+  summarize(median_score = median(M22, na.rm = TRUE)) %>%
+  ungroup()
+
+p2 <- ggboxplot(df_median, x="cluster", y="median_score", width = 0.4, 
+                color = "black",#轮廓颜色
+                palette = Mcolors,
+                fill="cluster",#填充
+                xlab = F, #不显示x轴的标签
+                ylab = F,
+                bxp.errorbar=T,#显示误差条
+                bxp.errorbar.width=0.5, #误差条大小
+                size=0.1, #箱型图边线的粗细
+                outlier.shape=NA, #不显示outlier
+                title = "M2",
+                legend = "none")+ #图例放右边 + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  geom_hline(yintercept = 0.2, color = "black", linetype = "dashed", size = 1)
+
+
+library(clusterProfiler)
+genez<-read.gmt("D:\\Download\\h.all.v2024.1.Hs.symbols.gmt")
+
+genelist <- split(genez$gene, genez$term)
+Myeloid=AddModuleScore(Myeloid,genelist,name = names(genelist))
+Myeloid@meta.data
+myeloid_pathways <- c(
+  "HALLMARK_ANGIOGENESIS4",
+  "HALLMARK_APOPTOSIS7",
+  "HALLMARK_COMPLEMENT11",
+  "HALLMARK_IL6_JAK_STAT3_SIGNALING24",
+  "HALLMARK_INFLAMMATORY_RESPONSE25",
+  "HALLMARK_TNFA_SIGNALING_VIA_NFKB45",
+  "HALLMARK_XENOBIOTIC_METABOLISM50"
+)
+
+
+zz=Myeloid@meta.data[,c(1,19,21:76)]
+
+# 批量生成列表
+plots <- lapply(myeloid_pathways, function(pw){
+  ggboxplot(Myeloid@meta.data,
+            x = "cluster", y = pw,
+            width = 0.4,
+            color = "black",
+            palette = Mcolors,
+            fill = "cluster",
+            xlab = FALSE,
+            ylab = FALSE,
+            bxp.errorbar = TRUE,
+            bxp.errorbar.width = 0.5,
+            size = 0.1,
+            outlier.shape = NA,
+            title = gsub("[0-9]+$", "", pw),  # 去掉名字里的数字编号
+            legend = "none") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+})
+library(Seurat)
+#Mcolors = c("#F5AB5E","#AFC778","#947959","#EFDBB9","#5F97C6","#A3CDEA")
+
+
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 假设 zz 就是你给的 data.frame
+df_long <- zz %>%
+  pivot_longer(
+    cols = -c(orig.ident, cluster),  # 除 orig.ident、cluster 外的都是 ModuleScore
+    names_to = "module",
+    values_to = "score"
+  )
+
+# 按 orig.ident × cluster × module 算中位数
+df_median <- df_long %>%
+  group_by(orig.ident, cluster, module) %>%
+  summarize(median_score = median(score, na.rm = TRUE)) %>%
+  ungroup()
+
+# 画箱式图：每个 module 一个 facet
+
+
+
+pdf("zz1.pdf",50,50)
+ggplot(df_median, aes(x = cluster, y = median_score, fill = cluster)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = Mcolors)+
+  facet_wrap(~ module, scales = "free_y") +
+  theme_bw(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Cluster", y = "Median Module Score")
+dev.off()
+
+
+
+
+
+
+
+DCmarker=read.table("E:\\数据库\\Myeloid\\mm2.txt",header = T,sep = "\t")
+DCmarker=apply(DCmarker,2,function(x){setdiff(as.character(x),"")})
+
+Myeloid=AddModuleScore(Myeloid,DCmarker,name = names(DCmarker))
+
+colnames(Myeloid@meta.data)
+library(ggpubr)
+p9 <- ggboxplot(Myeloid@meta.data, x="cluster", y="ActivatedDC1", width = 0.4, 
+                color = "black",#轮廓颜色
+                palette = Mcolors,
+                fill="cluster",#填充
+                xlab = F, #不显示x轴的标签
+                ylab = F,
+                bxp.errorbar=T,#显示误差条
+                bxp.errorbar.width=0.5, #误差条大小
+                size=0.1, #箱型图边线的粗细
+                outlier.shape=NA, #不显示outlier
+                title = "ActivatedDC",
+                legend = "none")+ #图例放右边 + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+p99 <- ggboxplot(Myeloid@meta.data, x="cluster", y="MigratoryDC2", width = 0.4, 
+                 color = "black",#轮廓颜色
+                 palette = Mcolors,
+                 fill="cluster",#填充
+                 xlab = F, #不显示x轴的标签
+                 ylab = F,
+                 bxp.errorbar=T,#显示误差条
+                 bxp.errorbar.width=0.5, #误差条大小
+                 size=0.1, #箱型图边线的粗细
+                 outlier.shape=NA, #不显示outlier
+                 title = "MigratoryDC",
+                 legend = "none")+ #图例放右边 + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+pdf("E:\\胃癌\\20250619\\figure3\\Fig3C.pdf",8.8,7.8)
+cowplot::plot_grid(p1,p2,p9,plots[[5]],ncol = 2)
+dev.off()
+
+
+######Figure 3D#######
+rm(list = ls())
+Myeloid <- readRDS("E:/胃癌/20250619/data/Myeloid.rds")
+
+Macrophage=subset(Myeloid,cluster=="M03_TAM_C1QA")
+
+Macrophage=subset(Macrophage,Site%in%c("LN","MLN","MMLN"))
+
+# 每个样本×时间点×细胞类型汇总
+pb <- AggregateExpression(
+  Macrophage,
+  group.by = c("orig.ident", "Site"),
+  assays = "RNA",
+  slot = "counts"
+)
+counts <- pb$RNA
+# 再用 DESeq2 / edgeR 做 time ~ condition
+
+
+meta <- data.frame(
+  sample_time = colnames(counts),
+  time = sapply(strsplit(colnames(counts), "_"), `[`, 2),
+  sample = sapply(strsplit(colnames(counts), "_"), `[`, 1)
+)
+
+meta$time_num <- meta$time
+meta$time_num <- gsub("MMLN",2,meta$time_num)
+meta$time_num <- gsub("MLN",1,meta$time_num)
+meta$time_num <- gsub("LN",0,meta$time_num)
+meta$time_num =as.numeric(meta$time_num )
+
+colnames(counts)=meta$sample
+rownames(meta)=meta$sample
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = counts, colData = meta, design = ~ time_num)
+
+# 3. 运行 LRT 检验 (寻找随时间变化的基因)
+dds_lrt <- DESeq(dds, test = "LRT", reduced = ~ 1)
+res_lrt <- results(dds_lrt)
+
+# 筛选显著基因 (如 padj < 0.05)
+sig_genes <- rownames(res_lrt[which(res_lrt$padj < 0.05), ])
+
+# 4. 获取标准化表达量并准备热图数据
+vsd <- varianceStabilizingTransformation(dds_lrt, blind = FALSE)
+exp_matrix <- assay(vsd)[sig_genes, ]
+exp_matrix
+# 按时间点取平均值，方便观察趋势
+avg_exp <- t(apply(exp_matrix, 1, function(x) tapply(x, meta$time_num, mean)))
+# Z-score 标准化
+scaled_exp <- t(scale(t(avg_exp)))
+library(ComplexHeatmap)
+library(circlize)
+# 5. 绘图
+
+
+# 设定热图颜色
+col_fun = colorRamp2(c(-2, 0, 2), c("#007891", "white", "#b2182b"))
+
+# 绘制热图并保存聚类结果
+# 假设我们想分成 4 个簇（您可以根据热图实际效果调整 km 数）
+set.seed(123) # 保证聚类结果可重复
+
+
+# 创建一个向量，非 selected_genes 的行名设置为空字符串
+# 原来的 50 个基因
+selected_genes <- c(
+  # 炎症 / 免疫调控
+  "IL1B","IL1RAP","IRF5","RELA","STAT3","BIRC3","CASP4",
+  
+  # 趋化 / 肿瘤相关免疫
+  "CCL24","CCL14","ICAM1","ADGRE5","CD33","CD93","LGALS3",
+  
+  # 转录调控 / 应激反应
+  "ATF3","ATF4","HES1","KLF4","KLF9","CREM",
+  
+  # 代谢 / 缺氧
+  "PFKFB3","LDHA","LDHB","EGLN1","EGLN2","NFE2L2","SREBF1",
+  
+  # 吞噬 / 溶酶体 / 膜囊泡运输
+  "CTSH","RAB7A","RAB5A","APP",
+  
+  "TPT1","CUX1"
+)
+# 新的 TF 基因
+key_tf <- c("RELA","STAT3","IRF5","ATF3","CREM","KLF4","KLF9","HES1","CUX1","CREM",
+            "NFE2L2","SREBF1","RUNX1","EP300","SP1","BCL6","MECP2","SUMO2")
+
+selected_genes=unique(c(selected_genes,key_tf))
+# 合并并去重
+#final_genes <- unique(c(selected_genes, tf_genes))
+
+row_labels <- rownames(scaled_exp)
+row_labels[!rownames(scaled_exp) %in% selected_genes] <- ""  # 非50个基因行名置空
+
+
+library(ComplexHeatmap)
+library(circlize)
+
+# 假设 final_genes 是你要高亮的 50+15 基因
+key_genes <- selected_genes
+
+# 创建标注对象
+row_anno <- rowAnnotation(
+  mark = anno_mark(
+    at = which(rownames(scaled_exp) %in% key_genes),
+    labels = rownames(scaled_exp)[rownames(scaled_exp) %in% key_genes],
+    side = "right",
+    labels_gp = gpar(fontsize = 8)
+  )
+)
+
+# 绘制 heatmap
+ht <- Heatmap(scaled_exp, 
+              name = "Z-score",
+              column_title = "Macrophages Gene Expression Over Time",
+              col = col_fun,
+              show_row_names = FALSE,   # 关闭默认行名
+              cluster_columns = FALSE,
+              row_km = 4,
+              row_title = "Cluster %s",
+              column_names_side = "bottom"
+)
+
+# 合并标注
+ht <- ht + row_anno
+
+draw(ht)
+
+pdf("./Fig3D.pdf",7,7)
+print(ht)
+dev.off()
+
+
+
+
+library(maftools)
+#TCGA-LAML 的MAF 文件(gz)
+laml.maf = system.file('extdata', 'tcga_laml.maf.gz', package = 'maftools')
+#临床信息(optional)
+laml.clin = system.file('extdata', 'tcga_laml_annot.tsv', package = 'maftools')
+
+laml = read.maf(maf = laml.maf, clinicalData = laml.clin)
+
+getSampleSummary(laml)
+
+oncoplot(maf = laml, top = 20)
+
