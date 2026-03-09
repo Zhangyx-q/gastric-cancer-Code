@@ -222,6 +222,6 @@ nichenet_output <- nichenet_seuratobj_aggregate(
   weighted_networks = weighted_networks
 )
 
-pdf("./Fig3I.pdf", 26, 7.3)
-print(nichenet_output$ligand_activity_target_heatmap)
+pdf("./Fig3I.pdf",2.6,3.4)
+nichenet_output$ligand_target_heatmap
 dev.off()
