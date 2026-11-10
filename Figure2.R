@@ -231,6 +231,164 @@ pdf("./Fig2H.pdf",5,5)
 print(p_heat)
 dev.off()
 
+# ==========
+# Fig 2J
+# ==========
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# 1. Define tissue order
+tissue_order <- c("PT", "LN", "MT", "MLN", "MMLN")
+
+# 2. Extract T03 clonal TCRs
+T03_clones <- TCR %>%
+  filter(
+    majorCluster == "T03_CD8_GZMB",
+    clone.status == "Clonal"
+  ) %>%
+  pull(clone.id) %>%
+  unique()
+
+# 3. Extract T04 TCRs from different tissues
+T04_clones <- TCR %>%
+  filter(
+    majorCluster == "T04_CD8_GZMK",
+    loc %in% tissue_order
+  ) %>%
+  distinct(loc, clone.id)
+
+# 4. Calculate the proportion of shared TCRs
+plot_data <- T04_clones %>%
+  group_by(loc) %>%
+  summarise(
+    proportion = if (length(T03_clones) > 0) {
+      mean(unique(clone.id) %in% T03_clones)
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  ) %>%
+  complete(
+    loc = tissue_order,
+    fill = list(proportion = 0)
+  ) %>%
+  mutate(
+    class = factor(loc, levels = tissue_order),
+    color = ifelse(loc %in% c("PT", "MT"), "Tumor", "LN")
+  )
+
+# 5. Plot
+p <- ggplot(plot_data, aes(x = class, y = proportion, fill = color)) +
+  geom_col(width = 0.5) +
+  scale_fill_manual(
+    values = c(
+      "LN" = "#70b29c",
+      "Tumor" = "#a0ac48"
+    )
+  ) +
+  scale_x_discrete(drop = FALSE) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(
+      angle = 0,
+      hjust = 0.5
+    ),
+    legend.position = "none"
+  ) +
+  labs(
+    x = NULL,
+    y = "Proportion of shared TCRs\n(normalized by T03 cell number)"
+  )
+
+# 6. Save figure
+ggsave(
+  filename = "./Fig2J.pdf",
+  plot = p,
+  width = 5.8,
+  height = 4
+)
+
+# ======
+# Fig 2K
+# ======
+
+# 1. Extract T04_CD8_GZMK clonotypes
+T04_clones <- TCR %>%
+  filter(
+    majorCluster == "T04_CD8_GZMK",
+    loc %in% c("LN", "MLN", "MMLN")
+  ) %>%
+  group_by(loc) %>%
+  summarise(
+    clones = list(clone.id),
+    .groups = "drop"
+  )
+
+T04_LN <- T04_clones$clones[[match("LN", T04_clones$loc)]]
+T04_MLN <- T04_clones$clones[[match("MLN", T04_clones$loc)]]
+T04_MMLN <- T04_clones$clones[[match("MMLN", T04_clones$loc)]]
+
+# 2. Combine MLN and MMLN
+T04_MLNall <- c(T04_MLN, T04_MMLN)
+
+# 3. Extract T03_CD8_GZMB clonotypes
+T03_clones <- TCR %>%
+  filter(
+    majorCluster == "T03_CD8_GZMB",
+    loc %in% c("PT", "MT")
+  ) %>%
+  group_by(loc) %>%
+  summarise(
+    clones = list(unique(clone.id)),
+    .groups = "drop"
+  )
+
+T03_PT <- T03_clones$clones[[match("PT", T03_clones$loc)]]
+T03_MT <- T03_clones$clones[[match("MT", T03_clones$loc)]]
+
+# 4. Calculate shared TCR proportions
+denominator <- length(T04_LN)
+
+result <- tibble(
+  class = c("pt", "mt"),
+  proportion = c(
+    sum(T04_LN %in% T03_PT) / denominator,
+    sum(T04_MLNall %in% T03_MT) / denominator
+  )
+) %>%
+  mutate(
+    class = factor(class, levels = c("pt", "mt"))
+  )
+
+# 5. Plot
+p <- ggplot(result, aes(x = class, y = proportion, fill = class)) +
+  geom_col(width = 0.5) +
+  scale_fill_manual(
+    values = c(
+      "pt" = "#70b29c",
+      "mt" = "#a0ac48"
+    )
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(hjust = 0.5),
+    legend.position = "none"
+  ) +
+  labs(
+    x = NULL,
+    y = "Proportion of shared TCRs"
+  )
+
+# 6. Save PDF
+ggsave(
+  "./Fig2K.pdf"
+  plot = p,
+  width = 5.8,
+  height = 4
+)
+
 
 # ===============================
 # Fig 2L – Clone distribution heatmaps
