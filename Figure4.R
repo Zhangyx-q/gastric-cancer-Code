@@ -306,6 +306,472 @@ netVisual_individual(cellchat1, signaling = "CCL", pairLR.use = "CCL2_CCR2",
 dev.off()
 
 
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# 1. Load data
+Fibroblast <- readRDS("./Fibroblast.rds")
+
+# 2. Define colors
+Scolors <- c(
+  "S1" = "#d20962",
+  "S2" = "#f47721",
+  "S3" = "#7ac143",
+  "S4" = "#00a78e"
+)
+
+Site_colors <- c(
+  "LN" = "#007891",
+  "MLN" = "#129981",
+  "MMLN" = "#3A5182",
+  "PT" = "#EA977C",
+  "MT" = "#DA4B35"
+)
+
+# 3. UMAP
+p_umap <- DimPlot(
+  Fibroblast,
+  reduction = "umap",
+  group.by = "cluster",
+  cols = Scolors,
+  label = TRUE
+) +
+  theme_classic()
+
+ggsave(
+  "./Fig4H.pdf",
+  p_umap,
+  width = 6.3,
+  height = 3.7
+)
+
+# 4. Calculate cell numbers
+mapz <- Fibroblast@meta.data %>%
+  count(cluster, Site, name = "n") %>%
+  mutate(
+    Site = factor(
+      Site,
+      levels = c("LN", "MLN", "MMLN", "PT", "MT")
+    )
+  )
+
+# 5. Tissue composition in each cluster
+p_cluster <- ggplot(
+  mapz,
+  aes(x = cluster, y = n, fill = Site)
+) +
+  geom_col(
+    position = "fill",
+    color = "grey",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(values = Site_colors) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )
+  ) +
+  labs(x = NULL, y = "Proportion", fill = "Site")
+
+ggsave(
+  "./Fig4H1.pdf",
+  p_cluster,
+  width = 5,
+  height = 4
+)
+
+# 6. Fibroblast composition in each tissue
+p_site <- ggplot(
+  mapz,
+  aes(x = Site, y = n, fill = cluster)
+) +
+  geom_col(
+    position = "fill",
+    color = "grey",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(values = Scolors) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )
+  ) +
+  labs(x = NULL, y = "Proportion", fill = "Cluster")
+
+ggsave(
+  "./Fig4H2.pdf",
+  p_site,
+  width = 5,
+  height = 4
+)
+
+
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# 1. Load data
+Fibroblast <- readRDS("./Fibroblast.rds")
+
+# 2. Define colors
+Scolors <- c(
+  "S1" = "#d20962",
+  "S2" = "#f47721",
+  "S3" = "#7ac143",
+  "S4" = "#00a78e"
+)
+
+Site_colors <- c(
+  "LN" = "#007891",
+  "MLN" = "#129981",
+  "MMLN" = "#3A5182",
+  "PT" = "#EA977C",
+  "MT" = "#DA4B35"
+)
+
+# 3. UMAP
+p_umap <- DimPlot(
+  Fibroblast,
+  reduction = "umap",
+  group.by = "cluster",
+  cols = Scolors,
+  label = TRUE
+) +
+  theme_classic()
+
+ggsave(
+  "./Fig4H.pdf",
+  p_umap,
+  width = 6.3,
+  height = 3.7
+)
+
+# 4. Calculate cell numbers
+mapz <- Fibroblast@meta.data %>%
+  count(cluster, Site, name = "n") %>%
+  mutate(
+    Site = factor(
+      Site,
+      levels = c("LN", "MLN", "MMLN", "PT", "MT")
+    )
+  )
+
+# 5. Tissue composition in each cluster
+p_cluster <- ggplot(
+  mapz,
+  aes(x = cluster, y = n, fill = Site)
+) +
+  geom_col(
+    position = "fill",
+    color = "grey",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(values = Site_colors) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )
+  ) +
+  labs(x = NULL, y = "Proportion", fill = "Site")
+
+ggsave(
+  "./Fig4H1.pdf",
+  p_cluster,
+  width = 5,
+  height = 4
+)
+
+# 6. Fibroblast composition in each tissue
+p_site <- ggplot(
+  mapz,
+  aes(x = Site, y = n, fill = cluster)
+) +
+  geom_col(
+    position = "fill",
+    color = "grey",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(values = Scolors) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )
+  ) +
+  labs(x = NULL, y = "Proportion", fill = "Cluster")
+
+ggsave(
+  "./Fig4H2.pdf",
+  p_site,
+  width = 5,
+  height = 4
+)
+
+
+
+rm(list = ls())
+
+library(Seurat)
+library(dplyr)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ggplot2)
+
+# ==========================================
+# Figure 4 H&L
+# ==========================================
+
+Fibroblast <- readRDS(
+  "./Fibroblast.rds"
+)
+
+# Only retain S2 and S3 Fibroblast
+B5 <- subset(
+  Fibroblast,
+  subset = cluster %in% c(
+    "S2_Fib_CXCL14",
+    "S3_Fib_SFRP2"
+  )
+)
+
+Idents(B5) <- "cluster"
+
+aa <- FindMarkers(
+  B5,
+  ident.1 = "S2_Fib_CXCL14",
+  ident.2 = "S3_Fib_SFRP2",
+  only.pos = FALSE,
+  logfc.threshold = 0,
+  min.pct = 0,
+  return.thresh = 1
+)
+
+aa$gene <- rownames(aa)
+
+geneList <- aa$avg_log2FC
+names(geneList) <- aa$gene
+
+# Remove NA and duplicated genes
+geneList <- geneList[
+  !is.na(geneList) &
+    !is.na(names(geneList)) &
+    names(geneList) != ""
+]
+
+geneList <- geneList[
+  !duplicated(names(geneList))
+]
+
+# Sort from high to low
+geneList <- sort(
+  geneList,
+  decreasing = TRUE
+)
+
+gse_GO <- gseGO(
+  geneList = geneList,
+  OrgDb = org.Hs.eg.db,
+  keyType = "SYMBOL",
+  ont = "BP",
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 1,
+  pAdjustMethod = "BH",
+  verbose = FALSE
+)
+
+
+AA <- dotzz(
+  B5,
+  assay = "RNA",
+  features = aa$gene,
+  group.by = "cluster",
+  scale = FALSE
+)
+
+
+AA_wide <- AA %>%
+  select(features.plot, id, avg.exp.scaled) %>%
+  pivot_wider(
+    names_from = id,
+    values_from = avg.exp.scaled
+  )
+
+
+AA_wide1 <- AA_wide %>%
+  left_join(
+    aa,
+    by = c("features.plot" = "gene")
+  ) %>%
+  mutate(
+    change = case_when(
+      p_val_adj < 0.05 & abs(avg_log2FC) > 1 ~ "Significant",
+      TRUE ~ "No Significant"
+    ),
+    change = factor(
+      change,
+      levels = c("No Significant", "Significant")
+    )
+  )
+
+
+label_data <- AA_wide1 %>%
+  filter(
+    abs(avg_log2FC) > 1.5,
+    !is.na(p_val_adj),
+    p_val_adj > 0,
+    -log10(p_val_adj) > 10
+  )
+
+p1 <- ggplot(
+  AA_wide1,
+  aes(
+    x = S2_Fib_CXCL14,
+    y = S3_Fib_SFRP2
+  )
+) +
+  geom_point(
+    color = "grey80",
+    size = 1
+  ) +
+  geom_point(
+    aes(color = change),
+    size = 2,
+    alpha = 0.5
+  ) +
+  geom_text_repel(
+    data = label_data,
+    aes(label = features.plot),
+    size = 4,
+    max.overlaps = 20
+  ) +
+  scale_color_manual(
+    values = c(
+      "No Significant" = "#caccd1",
+      "Significant" = "#a71930"
+    )
+  ) +
+  labs(
+    x = "Average expression of S2_Fib_CXCL14",
+    y = "Average expression of S3_Fib_SFRP2",
+    color = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "right"
+  )
+
+# ==========================================
+# 6. Save
+# ==========================================
+
+ggsave(
+  filename = "./Figure4H.pdf",
+  plot = p1,
+  width = 7.5,
+  height = 6
+)
+
+
+
+
+mm <- as.data.frame(gse_GO)
+
+pathw <- c(
+  "basement membrane organization",
+  "cell-cell adhesion",
+  "regulation of wound healing",
+  "blood vessel development",
+  "immune system process",
+  "humoral immune response",
+  "complement activation"
+)
+
+mm1 <- mm %>%
+  filter(Description %in% pathw)
+
+plot_data <- mm1 %>%
+  mutate(
+    logP = -log10(pmax(p.adjust, 1e-300)),
+    logP_signed = ifelse(
+      NES > 0,
+      logP,
+      -logP
+    ),
+    Description = factor(
+      Description,
+      levels = Description[order(NES)]
+    )
+  )
+
+
+p1 <- ggplot(
+  plot_data,
+  aes(
+    x = logP_signed,
+    y = Description,
+    fill = NES > 0
+  )
+) +
+  geom_col(width = 0.6) +
+  geom_vline(
+    xintercept = 0,
+    linewidth = 0.5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "TRUE" = "#FA8400",
+      "FALSE" = "#59BD48"
+    ),
+    labels = c(
+      "TRUE" = "NES > 0",
+      "FALSE" = "NES < 0"
+    )
+  ) +
+  scale_x_continuous(
+    labels = abs
+  ) +
+  labs(
+    x = expression(-log[10]("adjusted P")),
+    y = NULL,
+    fill = "NES"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_text(size = 11),
+    axis.text.x = element_text(size = 10),
+    legend.position = "top"
+  )
+
+# ==========================================
+# 8. Save figure
+# ==========================================
+
+ggsave(
+  filename = "./Figure4L.pdf",
+  plot = p1,
+  width = 5.6,
+  height = 4.5
+)
+
+
+
 
 
 
