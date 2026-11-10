@@ -2,7 +2,7 @@ rm(list = ls())
 
 library(Seurat)
 
-Bcell <- readRDS("E:/胃癌/20250619/data/Bcell.rds")
+Bcell <- readRDS("./Bcell.rds")
 
 Bcolors = c("#EF98A1","#FBE3C0","#E2F2CD","#DBAA77","#B6DAA7","#F9D5D5","#AFC8E2")
 
@@ -304,5 +304,9 @@ netVisual_individual(cellchat1, signaling = "CCL", pairLR.use = "CCL2_CCR2",
                      
 )
 dev.off()
+
+
+
+
 
 
