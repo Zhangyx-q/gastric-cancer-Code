@@ -30,9 +30,9 @@ dev.off()
 
 DotPlot(Epithelial_meta,features = c("CD24","KRAS","MMP7","IFITM1","IFITM3"))
 
-  source("E:\\IBD\\0.RawData\\IBD\\20250218\\dotzz.R")
+  source(./dotzz.R")
 
-pdf("./Figure7c.pdf",3.5,2.5)
+pdf("./Figure7d.pdf",3.5,2.5)
   plotDotz(Epithelial_meta,assay = "RNA",features = c("CD24","KRAS","CD47","MMP7","IFITM1","IFITM3","CD74"))+
   
   scale_fill_gradientn(colours = c("#3A84B1","#CCE195","#F9EDA7","#ED8156","#CD464E"))+ #颜色p
