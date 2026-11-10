@@ -111,57 +111,292 @@ ggsave('./Fig5H.pdf', p5h, width = 8, height = 6)
 
 
 
-# ==============================================================================
-# 6. Figure 5I & 5J: Clinical Correlation (TCGA-STAD)
-# ==============================================================================
-# Assuming 'clinInfo11' (Stage) and 'clinInfo111' (Grade) are prepared
-# Plotting Correlation with Grade (Fig 5J)
-p5j <- ggplot(clinInfo111, aes(x = tumor_grade, y = score, fill = tumor_grade)) +
-  geom_boxplot(outlier.shape = NA, width = 0.5) +
-  geom_jitter(width = 0.2, alpha = 0.1) +
-  scale_fill_manual(values = c("#c59b95", "#9c5a57", "#782d3e")) +
-  geom_smooth(aes(x = tumor_grade_num, y = score, group = 1), method = "lm", color = "black") +
-  stat_compare_means(method = "t.test", label = "p.signif") +
-  theme_classic() +
-  labs(title = "Grade vs ILC3 Score")
+library(dplyr)
+library(tidyr)
+library(limma)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(survival)
+library(survminer)
+library(ggplot2)
+library(GSVA)
 
-pdf("./Fig5J.pdf", 3.9, 2.7)
-print(p5j)
-dev.off()
+# ==========================================
+# 1. Load expression data
+# ==========================================
 
-# Plotting Correlation with Stage (Fig 5I)
-p5i <- ggplot(clinInfo11, aes(x = ajcc_pathologic_stage1, y = score, fill = ajcc_pathologic_stage1)) +
-  geom_boxplot(outlier.shape = NA, width = 0.5) +
-  geom_jitter(width = 0.2, alpha = 0.1) +
-  scale_fill_manual(values = c("#b0a696","#c59b95", "#9c5a57", "#782d3e")) +
-  geom_smooth(aes(x = tumor_grade_num, y = score, group = 1), method = "lm", color = "black") +
-  theme_classic() +
-  labs(title = "Stage vs ILC3 Score")
+data <- read.table(
+  "E:/胃癌/20250319/TCGA-STAD.star_fpkm.tsv",
+  sep = "\t",
+  header = TRUE,
+  check.names = FALSE
+)
 
-pdf("./Fig5I.pdf", 5, 3.5)
-print(p5i)
-dev.off()
+# Remove Ensembl version suffix
+data$ENSEMBL <- sub("\\..*$", "", data$Ensembl_ID)
 
-# ==============================================================================
-# 5. Figure 5L: External Validation (GSE5081)
-# ==============================================================================
-ilc3_signature <- list(c("AREG", "SPINK2", "LINC00299", "KIT", "SCN1B", "LST1", "SOX4", "TYROBP", "TMIGD2", "IL7R"))
+# ==========================================
+# 2. Ensembl ID -> Gene Symbol
+# ==========================================
 
-gse_data <- read.table("./GSE5081.txt", sep = "\t", header = TRUE, row.names = 1) %>% as.matrix() %>% scale()
-gse_clin <- read.table("./GSE5081_clin.txt", sep = "\t", row.names = 1, header = TRUE) %>% t() %>% as.data.frame()
+gene_map <- bitr(
+  unique(data$ENSEMBL),
+  fromType = "ENSEMBL",
+  toType = "SYMBOL",
+  OrgDb = org.Hs.eg.db
+) %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(ENSEMBL, .keep_all = TRUE)
 
-ssgsea_scores <- GSVA::gsva(gse_data, ilc3_signature, method = "ssgsea") %>% t() %>% as.data.frame()
-ssgsea_scores$Group <- factor(gse_clin$`!Sample_characteristics_ch1`, levels = c("HP-", "HP+"))
+# Merge gene annotation
+data1 <- data %>%
+  select(-Ensembl_ID) %>%
+  inner_join(gene_map, by = "ENSEMBL") %>%
+  select(-ENSEMBL) %>%
+  relocate(SYMBOL)
 
-p5l <- ggplot(ssgsea_scores, aes(x = Group, y = V1, fill = Group)) +
-  stat_boxplot(geom = "errorbar", width = 0.3) +
-  geom_boxplot() +
-  geom_jitter(width = 0.2) +
-  stat_compare_means(method = "t.test") +
-  scale_fill_manual(values = c("HP-" = "#007891", "HP+" = "#b22746")) +
-  labs(x = "H. pylori infection", y = "ILC3 Signature Score", title = "GSE5081") +
-  theme_classic()
+# Average expression of duplicated gene symbols
+expr <- avereps(
+  as.matrix(data1[, -1]),
+  ID = data1$SYMBOL
+)
 
-pdf("./Fig5L.pdf", 3.9, 2.7)
-print(p5l)
-dev.off()
+expr <- as.matrix(expr)
+
+# ==========================================
+# 3. Load clinical data
+# ==========================================
+
+clinical <- read.table(
+  "E:/胃癌/20250319/TCGA_clinicalNEW.txt",
+  sep = "\t",
+  header = TRUE,
+  quote = "",
+  check.names = FALSE
+)
+
+clinical$sample <- paste0(clinical$sample, "A")
+rownames(clinical) <- clinical$sample
+
+# Match samples
+common_samples <- intersect(
+  rownames(clinical),
+  colnames(expr)
+)
+
+clinical <- clinical[common_samples, , drop = FALSE]
+expr <- expr[, common_samples, drop = FALSE]
+
+# Check sample matching
+stopifnot(
+  identical(rownames(clinical), colnames(expr))
+)
+
+# ==========================================
+# 4. Extract PDGFC expression
+# ==========================================
+
+stopifnot("PDGFC" %in% rownames(expr))
+
+clinical$PDGFC <- as.numeric(expr["PDGFC", ])
+
+# ==========================================
+# 5. Calculate ILC3 ssGSEA score
+# ==========================================
+
+ILC3_genes <- c(
+  "AREG", "SPINK2", "LINC00299", "KIT",
+  "SCN1B", "LST1", "SOX4", "TYROBP",
+  "TMIGD2", "IL7R"
+)
+
+# Retain genes present in expression matrix
+ILC3_genes <- intersect(
+  ILC3_genes,
+  rownames(expr)
+)
+
+# Check signature coverage
+print(ILC3_genes)
+
+# GSVA: ssGSEA
+# Compatible with recent GSVA versions
+ssgsea_par <- ssgseaParam(
+  exprData = expr,
+  geneSets = list(ILC3 = ILC3_genes),
+  normalize = TRUE
+)
+
+scorez <- gsva(ssgsea_par)
+
+clinical$ILC3 <- as.numeric(
+  scorez["ILC3", rownames(clinical)]
+)
+
+# ==========================================
+# 6. Save integrated data
+# ==========================================
+
+write.csv(
+  clinical,
+  "./TCGA_STAD_PDGFC_ILC3_survival_data.csv",
+  row.names = FALSE
+)
+
+
+
+# ==========================================
+# 7. Prepare 5-year survival data
+# ==========================================
+
+survival_data <- clinical %>%
+  filter(
+    !is.na(OS.time),
+    !is.na(OS),
+    OS.time > 0,
+    !is.na(PDGFC),
+    !is.na(ILC3)
+  ) %>%
+  mutate(
+    time_5y = pmin(OS.time, 1825),
+    event_5y = ifelse(OS.time > 1825, 0, OS)
+  )
+
+# ==========================================
+# 8. Survival analysis function
+# ==========================================
+
+survival_analysis <- function(
+    data,
+    variable,
+    output,
+    split = "median"
+) {
+
+  # Remove missing values
+  df <- data %>%
+    filter(
+      !is.na(.data[[variable]]),
+      !is.na(time_5y),
+      !is.na(event_5y)
+    )
+
+  # Continuous Cox regression
+  formula_cox <- as.formula(
+    paste0(
+      "Surv(time_5y, event_5y) ~ ",
+      variable
+    )
+  )
+
+  cox_model <- coxph(
+    formula_cox,
+    data = df
+  )
+
+  print(summary(cox_model))
+
+  # Grouping
+  if (split == "median") {
+
+    cutoff <- median(
+      df[[variable]],
+      na.rm = TRUE
+    )
+
+  } else if (split == "optimal") {
+
+    cut <- surv_cutpoint(
+      df,
+      time = "time_5y",
+      event = "event_5y",
+      variables = variable,
+      minprop = 0.4
+    )
+
+    cutoff <- cut$cutpoint$cutpoint
+
+  } else {
+    stop("split must be median or optimal")
+  }
+
+  df$group <- ifelse(
+    df[[variable]] > cutoff,
+    "High",
+    "Low"
+  )
+
+  df$group <- factor(
+    df$group,
+    levels = c("Low", "High")
+  )
+
+  # Grouped Cox regression
+  group_cox <- coxph(
+    Surv(time_5y, event_5y) ~ group,
+    data = df
+  )
+
+  print(summary(group_cox))
+
+  # Kaplan-Meier
+  km_fit <- survfit(
+    Surv(time_5y, event_5y) ~ group,
+    data = df
+  )
+
+  p <- ggsurvplot(
+    km_fit,
+    data = df,
+    pval = TRUE,
+    risk.table = FALSE,
+    conf.int = FALSE,
+    legend.title = variable,
+    legend.labs = c("Low", "High"),
+    xlab = "Time (days)",
+    ylab = "Overall survival probability",
+    xlim = c(0, 1825),
+    break.time.by = 365,
+    palette = c("#70b29c", "#a71930")
+  )
+
+  ggsave(
+    paste0(output, ".pdf"),
+    p$plot,
+    width = 4.6,
+    height = 4.1
+  )
+
+  return(
+    list(
+      data = df,
+      cox = cox_model,
+      group_cox = group_cox,
+      km = km_fit,
+      cutoff = cutoff,
+      plot = p
+    )
+  )
+}
+
+# ==========================================
+# 9. PDGFC survival analysis
+# ==========================================
+
+PDGFC_result <- survival_analysis(
+  data = survival_data,
+  variable = "PDGFC",
+  output = "Figure5I",
+  split = "median"
+)
+
+# ==========================================
+# 10. ILC3 survival analysis
+# ==========================================
+
+ILC3_result <- survival_analysis(
+  data = survival_data,
+  variable = "ILC3",
+  output = "Figure5J",
+  split = "median"
+)
