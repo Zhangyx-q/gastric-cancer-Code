@@ -519,3 +519,205 @@ saveRDS(
   "results/RDS/STAD_scRNAseq_final.rds"
 )
 
+
+new.cluster.ids<-0:21
+new.cluster.ids[which(new.cluster.ids%in%c(1,	2,3,4,8,11))]<-"T"
+new.cluster.ids[which(new.cluster.ids%in%c(0,5,6,10,12))]<-"B"
+new.cluster.ids[which(new.cluster.ids%in%c(7))]<-"Epithelial"
+new.cluster.ids[which(new.cluster.ids%in%c(9,14,15,18))]<-"Myeloid"
+new.cluster.ids[which(new.cluster.ids%in%c(20))]<-"mural"
+new.cluster.ids[which(new.cluster.ids%in%c(13))]<-"endothelial"
+new.cluster.ids[which(new.cluster.ids%in%c(16))]<-"fibroblast"
+new.cluster.ids[which(new.cluster.ids%in%c(19))]<-"enteroendocrine"
+new.cluster.ids[which(new.cluster.ids%in%c(17,21))]<-"delete"
+
+names(new.cluster.ids)<-0:21
+sceList1@meta.data$celltype<-new.cluster.ids[match(sceList1@meta.data$seurat_clusters,names(new.cluster.ids))]
+
+Idents(stad)<-sceList1$celltype
+
+col=c(c(brewer.pal(12, "Set3")[-c(6,9)]),
+      (brewer.pal(12, "Set3")[6]))
+
+levels(sceList1)<-sort(levels(sceList1))
+
+pdf("umap_cellcluster.pdf",6,5)
+DimPlot(stad,reduction ="umap",group.by = "seurat_clusters" , label = T)
+dev.off()
+
+#############Tcell recluster###########
+
+library(Seurat)
+
+# 1. Read T-cell subset
+Tcell <- readRDS("/T.rds")
+
+
+
+# 3. Define T-cell subclustering function
+seuratz <- function(sub_obj) {
+
+  # Re-normalization and feature selection
+  sub_obj <- NormalizeData(sub_obj)
+  sub_obj <- FindVariableFeatures(
+    sub_obj,
+    selection.method = "vst"
+  )
+  sub_obj <- ScaleData(sub_obj)
+
+  # PCA
+  sub_obj <- RunPCA(sub_obj)
+
+  # Neighbors and clustering
+  sub_obj <- FindNeighbors(
+    sub_obj,
+    reduction = "harmony",
+    dims = 1:30
+  )
+
+  sub_obj <- FindClusters(
+    sub_obj,
+    resolution = 0.9
+  )
+
+  # UMAP
+  sub_obj <- RunUMAP(
+    sub_obj,
+    reduction = "harmony",
+    dims = 1:30
+  )
+
+  return(sub_obj)
+}
+
+# 4. Set original cluster identities
+Idents(Tcell) <- Tcell$seurat_clusters
+
+# 5. Define cluster annotations
+namez1 <- c(
+  "T01_CD4_LEF1",
+  "T02_CD4_SELL",
+  "T03_CD8_GZMB",
+  "T04_CD8_GZMK",
+  "T05_CD4_CTLA4",
+  "T06_CD8_IL7R",
+  "T07_CD4_TNFRSF4",
+  "T08_DNT_ANXA1",
+  "T09_gdT_GNLY",
+  "T10_CD8_CCL5",
+  "T11_ILC-like_AREG",
+  "T12_CD8_FOS",
+  "T01_CD4_LEF1"
+)
+
+names(namez1) <- as.character(0:12)
+
+# 6. Retain clusters 0–12
+Tcell <- subset(Tcell, idents = as.character(0:12))
+
+# 7. Add cell-type annotations
+Tcell@meta.data$cluster <- namez1[
+  match(
+    as.character(Tcell@meta.data$seurat_clusters),
+    names(namez1)
+  )
+]
+
+# 8. Set annotated identities
+Idents(Tcell) <- "cluster"
+levels(Tcell) <- sort(levels(Tcell))
+
+# 9. Save annotated object
+saveRDS(Tcell, "Tcell.rds")
+
+#######B cell#######
+
+Bcell <- readRDS("./B.rds")
+Bcell@meta.data$delete<-0
+Bcell@meta.data[names(which(Bcell@assays$RNA@counts["CD3D",]>0)),"delete"]<-1
+Bcell@meta.data[names(which(Bcell@assays$RNA@counts["CD3E",]>0)),"delete"]<-1
+Bcell@meta.data[names(which(Bcell@assays$RNA@counts["CD3G",]>0)),"delete"]<-1
+
+table(Bcell@meta.data$delete)
+# table(Bcell@meta.data[which(Bcell@meta.data$delete==1),"orig.ident"])
+Bcell<-subset(Bcell,delete==0)
+
+Bcell<-seuratz(Bcell)
+
+Bcell <- RunUMAP(Bcell, reduction = "harmony", dims = 1:30)
+
+DimPlot(Bcell,label = T)
+
+BcellMarker<-FindAllMarkers(Bcell)
+write.csv(BcellMarker," \\Bcell\\BcellMarker6.csv",row.names = F)
+
+Bcell<-subset(Bcell,idents = c(0, 1,2, 3, 4,5,6,7))
+
+Bcolors = c("#EF98A1","#FBE3C0","#E2F2CD","#DBAA77","#B6DAA7",
+            "#F9D5D5","#AFC8E2","#DEECF6")
+
+# 0: B_naive_IGHD
+# 1: B_naive_SELL
+# 2: B_Naive_CCR7
+# 3: Plasma JCHAIN
+# 4: B_Cycling_MKI67
+# 5: GC MEF2B
+
+namez1<-c("B01_naive_IGHD","B02_memery_CD27","B03_memery_TNFRSF13B","B04_HSP_CCR7","B05_Plasma_JCHAIN","B06_GCB_LMO2","B07_Cycling_MKI67","B05_Plasma_JCHAIN")
+
+names(namez1)<-c(0, 1, 2, 3, 4,5,6,7)
+
+Bcell@meta.data$cluster<-namez1[match(Bcell@meta.data$seurat_clusters,names(namez1))]
+Idents(Bcell)<-Bcell$cluster
+levels(Bcell)<-sort(levels(Bcell))
+saveRDS(Bcell,"Bcell.rds")
+
+
+##############Myeloid################
+
+Myeloid <- readRDS("/Myeloid.rds")
+
+Myeloid<-seuratz(Myeloid)
+
+DimPlot(Myeloid,label = T)
+table(Myeloid@meta.data$RNA_snn_res.0.7)
+MyeloidMarker<-FindAllMarkers(Myeloid)
+write.csv(MyeloidMarker,"\\Myeloid\\MyeloidMarker7.csv",row.names = F)
+
+Mcolors = c("#F5AB5E","#AFC778","#947959","#EFDBB9","#5F97C6","#A3CDEA","#F09496","#F4DFDD")
+
+Myeloid1<-subset(Myeloid,idents = c(0, 1, 2, 3, 4,6,7,8,9))
+
+
+namez1<-c("M01_cDC3_CCL19","M02_Neutrophil_CXCL8","M03_TAM_C1QA","M04_Mast_TPSAB1","M02_Neutrophil_CXCL8",
+          "M05_cDC2_CLEC10A","M03_TAM_C1QA","M06_cDC1_CLEC9A")
+
+names(namez1)<-c(0, 1, 2, 3, 4,6,7,8)
+
+Myeloid1@meta.data$cluster<-namez1[match(Myeloid1@meta.data$seurat_clusters,names(namez1))]
+Idents(Myeloid1)<-Myeloid1$cluster
+levels(Myeloid1)<-sort(levels(Myeloid1))
+saveRDS(Myeloid1,"Myeloid.rds")
+
+###################################################
+
+Fibroblast <- readRDS("/Fibroblast.rds")
+
+Fibroblast<-seuratz(Fibroblast)
+
+FibroblastMarker<-FindAllMarkers(Fibroblast)
+write.csv(FibroblastMarker,"\\FibroblastMarker.csv",row.names = F)
+
+Fibroblast1<-Fibroblast
+
+namez1<-c("S1_Pericyte","S1_Pericyte","S2_CAF_CXCL14","S3_CAF_SFRP2","S2_CAF_CXCL14","S4_myCAF_COL1A1")
+
+
+names(namez1)<-c( 0,1, 2, 3,4, 5)
+
+Fibroblast1@meta.data$cluster<-namez1[match(Fibroblast1@meta.data$seurat_clusters,names(namez1))]
+Idents(Fibroblast1)<-Fibroblast1$cluster
+levels(Fibroblast1)<-sort(levels(Fibroblast1))
+saveRDS(Fibroblast1,"Fibroblast.rds")
+
+
